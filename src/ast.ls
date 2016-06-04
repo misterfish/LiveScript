@@ -4,6 +4,8 @@
 # To convert the syntax tree into a string of JavaScript code,
 # call `Block::compile-root`.
 
+{ inspect, } = require 'util'
+
 require! {
     'prelude-ls': {fold}
     './util': {name-from-path, strip-string}
@@ -949,8 +951,10 @@ class exports.Call extends Node
         node <<< back: (args[index] = fun)body
 
     @let = (args, body, generator = false) ->
+        #console.log 'letting args', args, 'body', body, 'generator', generator
         params = for a, i in args
             if a.op is \= and not a.logic and a.right
+                #console.log "it's an equals, right is" a.right
                 args[i] = that
                 continue if i is 0 and gotThis = a.left.value is \this
                 a.left
@@ -1524,6 +1528,7 @@ class exports.Binary extends Node
 # Assignment to a variable/property.
 class exports.Assign extends Node
     (@left, rite, @op or \=, @logic or @op.logic, @defParam) ~>
+        #console.log 'assign, left' @left, 'rite' inspect(rite, depth: null), 'op' @op, 'logic' @logic, 'defparam', @defParam
         @opLoc = @op
         @op += ''
         @[if rite instanceof Node then \right else \unaries] = rite
@@ -2820,6 +2825,15 @@ class exports.Vars extends Node
             o.scope.declare value, v
         sn(this, (Literal \void .compile o, level))
 
+
+/*
+exports.debug = (ary, pass) ->
+    console.log.apply console, ary
+    pass
+*/
+
+
+
 #### Parser Utils
 # Helpers for modifying nodes in [parser](../lib/parser.js).
 
@@ -3184,6 +3198,8 @@ let @ = PREC = {unary: 0.9}
     @\.<<. = @\.>>. = @\.>>>.                       = 0.6
     @\+  = @\-                                      = 0.7
     @\*  = @\/  = @\%                               = 0.8
+
+    @\|> = 0.8
 
 TAB = ' ' * 2
 

@@ -29,6 +29,7 @@ ditto = {}
 last  = ''
 
 o = (patterns, action, options) ->
+    patterns-orig = patterns
     patterns.=trim!.split /\s+/
     action &&= if action is ditto then last else
         "#action"
@@ -37,6 +38,17 @@ o = (patterns, action, options) ->
         .replace /\b(?!Er)(?!String)[A-Z][\w.]*/g 'yy.$&'
         .replace /(\.L\()\s*(\d+\s*\,)\s*(\d+\s*\,)?/g (, a, b, c) ->
             "#a@#{ b || '1,' }@#{ c || b || "#{patterns.length}," }"
+
+    options ?= {}
+    action = """
+        console.warn.call(console, '#patterns-orig');
+    """ + if debug = options.debug
+        then """
+            console.warn.call(console, #debug);
+        """
+        else ''
+        + action
+    console.warn 'action is' action
     [patterns, last := action or '', options]
 
 # Grammatical Rules
@@ -56,73 +68,109 @@ bnf =
     # The types of things that can be accessed or called into.
     Chain:
         o 'ID'            -> Chain L 1 Var $1
+        , debug: "'chain ID:', $1"
         o 'Parenthetical' -> Chain $1
+        , debug: "'chain 2'"
         o 'List'          ditto
+        , debug: "'chain 3'"
         o 'STRNUM'        -> Chain L 1 Literal $1
+        , debug: "'chain STRNUM', 'literal', $1"
         o 'LITERAL'       ditto
+        , debug: "'chain 5'"
 
         o 'Chain DOT Key'  -> $1.add L 2 3 Index $3, $2, true
+        , debug: "'chain 6'"
         o 'Chain DOT List' ditto
+        , debug: "'chain 7'"
 
         o 'Chain CALL( ArgList OptComma )CALL' -> $1.add L 2 5 Call $3
+        , debug: "'chain 8'"
 
         o 'Chain ?' -> Chain L 1 2 Existence $1.unwrap!
+        , debug: "'chain 9'"
 
-        o 'LET CALL( ArgList OptComma )CALL Block' -> Chain L 1 5 Call.let $3, $6
+        o 'LET CALL( ArgList OptComma )CALL Block' ->
+            Chain L 1 5 Call.let $3, $6
+        , debug: "'let call arglist $3', $3, '$6', $6"
 
         o '[ Expression LoopHeads ]'
         , -> Chain L 1 4 ($3.0.make-comprehension $2, $3.slice 1)
+        , debug: "'chain 10'"
         o '[ Expression LoopHeads DEDENT ]'
         , -> Chain L 1 5 ($3.0.make-comprehension $2, $3.slice 1)
+        , debug: "'chain 11'"
         o '{ [ ArgList OptComma ] LoopHeads }'
         , -> Chain L 1 7 ($6.0.add-obj-comp!.make-comprehension (L 3 Arr $3), $6.slice 1)
+        , debug: "'chain 12'"
 
         o '( BIOP )'            -> Chain L 2 Binary $2
+        , debug: "'chain 13'"
         o '( BIOP Expression )' -> Chain L 2 Binary $2, , $3
+        , debug: "'chain 14'"
         o '( Expression BIOP )' -> Chain L 3 Binary $3,   $2
+        , debug: "'chain 15'"
 
         o '( BIOPR )'
         , -> Chain L 2 if '!' is $2.char-at 0
                        then Binary $2.slice(1) .invert-it!
                        else Binary $2
+        , debug: "'chain 16'"
         o '( BIOPR Expression )'
         , -> Chain L 2 if '!' is $2.char-at 0
                        then Binary $2.slice(1), , $3 .invert-it!
                        else Binary $2, , $3
+        , debug: "'chain 17'"
         o '( Expression BIOPR )'
         , -> Chain L 3 if '!' is $3.char-at 0
                        then Binary $3.slice(1), $2 .invert-it!
                        else Binary $3, $2
+        , debug: "'chain 18'"
 
         o '( BIOPBP )'                              -> Chain L 2 Binary $2
+        , debug: "'chain 19'"
         o '( BIOPBP CALL( ArgList OptComma )CALL )' -> Chain L 2 Binary $2, , $4
+        , debug: "'chain 20'"
 
         o '( BIOPP )'                                -> Chain L 2 Binary $2
+        , debug: "'chain 21'"
         o '( PARAM( ArgList OptComma )PARAM BIOPP )' -> Chain L 6 Binary $6, $3
+        , debug: "'chain 22'"
 
         o '( UNARY )'           -> Chain L 2 Unary $2
+        , debug: "'chain 23'"
         o '( CREMENT )'         ditto
+        , debug: "'chain 24'"
 
         o '( BACKTICK Chain BACKTICK )'            -> Chain $3
+        , debug: "'chain 25'"
         o '( Expression BACKTICK Chain BACKTICK )' -> Chain L 2 5 $4.add L 2 Call [$2]
+        , debug: "'chain 26'"
         o '( BACKTICK Chain BACKTICK Expression )'
         , -> Chain(L 3 Chain Var 'flip$' .add L 3 Call [$3]).flip-it!.add L 5 Call [$5]
+        , debug: "'chain 28'"
 
         o '[ Expression TO Expression ]'
         , -> Chain L 2 4 new For from: $2, op: $3, to: $4, in-comprehension: true
+        , debug: "'chain 29'"
         o '[ Expression TO Expression BY Expression ]'
         , -> Chain L 2 6 new For from: $2, op: $3, to: $4, step: $6, in-comprehension: true
+        , debug: "'chain 30'"
         o '[ FROM Expression TO Expression ]'
         , -> Chain L 2 5 new For from: $3, op: $4, to: $5, in-comprehension: true
+        , debug: "'chain 31'"
         o '[ FROM Expression TO Expression BY Expression ]'
         , -> Chain L 2 7 new For from: $3, op: $4, to: $5, step: $7, in-comprehension: true
+        , debug: "'chain 32'"
         o '[ TO Expression ]'
         , -> Chain L 2 3 new For from: (Chain Literal 0), op: $2, to: $3, in-comprehension: true
+        , debug: "'chain 33'"
         o '[ TO Expression BY Expression ]'
         , -> Chain L 2 5 new For from: (Chain Literal 0), op: $2, to: $3, step: $5, in-comprehension: true
+        , debug: "'chain 34'"
 
         o 'Chain DOT [ Expression TO Expression BY Expression ]'
         , -> Chain L 1 9 new StepSlice op: $5, target: $1, from: $4, to: $6, step: $8
+        , debug: "'chain 36'"
         o 'Chain DOT [ TO Expression BY Expression ]'
         , -> Chain L 1 8 new StepSlice op: $4, target: $1, from: (Literal 0), to: $5, step: $7
         o 'Chain DOT [ Expression TO Expression ]'
@@ -136,8 +184,10 @@ bnf =
 
         o 'WITH Expression Block'
         , -> Chain L 1 2 Cascade $2, $3, 'with'
+        , debug: "'chain 37'"
         o 'FOR  Expression Block'
         , -> Chain L 1 2 new For(kind: $1, source: $2, body: $3, ref: true).add-body $3
+        , debug: "'chain 38'"
 
     # An array or object
     List:
@@ -161,11 +211,14 @@ bnf =
     ArgList:
         o ''                                                -> []
         o 'Arg'                                             -> [$1]
+        , debug: "'arglist -> arg, becomes [$1]', $1"
         o 'ArgList , Arg'                                   -> $1 ++ $3
         o 'ArgList OptComma NEWLINE Arg'                    -> $1 ++ $4
         o 'ArgList OptComma INDENT ArgList OptComma DEDENT' ditto
     Arg:
         o     'Expression'
+        , void
+        , debug: "'arg -> expression', $1"
         o '... Expression' -> Splat $2
         o '...'            -> Splat (L 1, Arr!), true
 
@@ -217,71 +270,113 @@ bnf =
         o 'Expression BACKTICK Chain BACKTICK Expression' -> $3.add L 1 5 Call [$1, $5]
 
         o 'Chain' -> $1.unwrap!
+        , debug: "'expression -> chain unwrap', $1"
 
         o 'Chain ASSIGN Expression'
-        , -> Assign $1.unwrap!, $3           , L 2 Box $2
+        , -> Assign $1.unwrap!, $3           , L(2 Box $2)
+        , debug: "'expression -> chain assign expression, assign takes $1 and $3:', $1, $3, 'and l takes a box with $2:', $2"
         o 'SplatChain ASSIGN Expression'
         , -> Assign $1, $3                   , L 2 Box $2
+        , debug: "'a2'"
         o 'Chain ASSIGN INDENT ArgList OptComma DEDENT'
         , -> Assign $1.unwrap!, Arr.maybe($4), L 2 Box $2
+        , debug: "'a3'"
 
         o 'Expression IMPORT Expression'
         , -> Import $1, $3           , $2 is '<<<<'
+        , debug: "'a4'"
         o 'Expression IMPORT INDENT ArgList OptComma DEDENT'
         , -> Import $1, Arr.maybe($4), $2 is '<<<<'
+        , debug: "'a5'"
 
         o 'CREMENT Chain' -> Unary $1, $2.unwrap!
+        , debug: "'a6'"
         o 'Chain CREMENT' -> Unary $2, $1.unwrap!, true
+        , debug: "'a7'"
         o 'CREMENT ... Chain' -> Unary $1, Splat $3.unwrap!
+        , debug: "'a8'"
         o 'SplatChain CREMENT' -> Unary $2, $1, true
+        , debug: "'a9'"
 
         o 'UNARY ASSIGN     Chain' -> Assign $3.unwrap!, [$1] L 2 Box $2
+        , debug: "'a10'"
         o '+-    ASSIGN     Chain' ditto
+        , debug: "'a11'"
         o 'CLONE ASSIGN     Chain' ditto
+        , debug: "'a12'"
         o 'UNARY ASSIGN ... Chain' -> Assign Splat($4.unwrap!), [$1] L 2 Box $2
+        , debug: "'a13'"
         o '+-    ASSIGN ... Chain' ditto
+        , debug: "'a14'"
         o 'CLONE ASSIGN ... Chain' ditto
+        , debug: "'a15'"
 
         o 'UNARY     Expression' -> Unary $1, $2
+        , debug: "'a17'"
         o '+-        Expression' ditto, prec: 'UNARY'
+        , debug: "'a18'"
         o 'CLONE     Expression' ditto, prec: 'UNARY'
+        , debug: "'a19'"
         o 'UNARY ... Expression' -> Unary $1, Splat $3
+        , debug: "'a20'"
         o '+-    ... Expression' ditto, prec: 'UNARY'
+        , debug: "'a21'"
         o 'CLONE ... Expression' ditto, prec: 'UNARY'
+        , debug: "'a22'"
         o 'UNARY ... INDENT ArgList OptComma DEDENT' -> Unary $1, Splat Arr $4
+        , debug: "'a23'"
 
         o 'UNARY INDENT ArgList OptComma DEDENT' -> Unary $1, Arr.maybe $3
+        , debug: "'a24'"
 
         o 'YIELD' -> Yield $1
+        , debug: "'a25'"
         o 'YIELD Expression' -> Yield $1, $2
+        , debug: "'a26'"
 
         o 'Expression +-      Expression' -> L 2 Binary $2, $1, $3
+        , debug: "'a27'"
         o 'Expression COMPARE Expression' ditto
+        , debug: "'a28'"
         o 'Expression LOGIC   Expression' ditto
+        , debug: "'a29'"
         o 'Expression MATH    Expression' ditto
+        , debug: "'a30'"
         o 'Expression POWER   Expression' ditto
+        , debug: "'a31'"
         o 'Expression SHIFT   Expression' ditto
+        , debug: "'a32'"
         o 'Expression BITWISE Expression' ditto
+        , debug: "'a33'"
         o 'Expression CONCAT  Expression' ditto
+        , debug: "'a34'"
         o 'Expression COMPOSE Expression' ditto
+        , debug: "'a35'"
 
         # the `*if` is required for the proper compilation for use with the dsl
         o 'Expression RELATION Expression' ->
           *if '!' is $2.char-at 0 then Binary $2.slice(1), $1, $3 .invert!
                                   else Binary $2         , $1, $3
+        , debug: "'a36'"
 
         o 'Expression PIPE     Expression' -> Block $1 .pipe $3, $2
+        , debug: "'a37'"
         o 'Expression BACKPIPE Expression' -> Block $1 .pipe [$3], $2
+        , debug: "'a38'"
 
         o 'Chain !?' -> Existence $1.unwrap!, true
+        , debug: "'a39'"
 
         # The function literal can be either anonymous with `->`,
         o 'PARAM( ArgList OptComma )PARAM -> Block'
         , -> Fun $2, $6, /~/.test($5), /--|~~/.test($5), /!/.test($5), /\*/.test($5)
+        , debug: "'a40'"
         # or named with `function`.
         o 'FUNCTION CALL( ArgList OptComma )CALL Block' -> (Fun $3, $6).named $1
+        , debug: "'a41'"
         o 'GENERATOR CALL( ArgList OptComma )CALL Block'
         , -> (Fun $3, $6, false, false, false, true).named $1
+        , debug: "'a42'"
 
         # The full complement of `if` and `unless` expressions
         o 'IF Expression Block Else'      -> L 1 2 If $2, $3, $1 is 'unless' .add-else $4
@@ -328,12 +423,14 @@ bnf =
         , -> new Class                    sup: $2, mixins: $3, body: $4
 
         o 'Chain EXTENDS Expression' -> Util.Extends $1.unwrap!, $3
+        , debug: "'a43'"
 
         o 'LABEL Expression' -> new Label $1, $2
         o 'LABEL Block'      ditto
 
         # `var`, `const`, `export`, or `import`
         o 'DECL INDENT ArgList OptComma DEDENT' -> Decl $1, $3, yylineno+1
+        , debug: "'a44'"
 
     Exprs:
         o         'Expression' -> [$1]
@@ -471,7 +568,6 @@ operators =
     <[ right    ASSIGN HURL  ]>
     <[ right    YIELD        ]>
     <[ right    BACKPIPE     ]>
-    <[ left     PIPE         ]>
     <[ right    , FOR WHILE EXTENDS INDENT SWITCH CASE TO BY LABEL ]>
     <[ right    LOGIC        ]>
     <[ left     BITWISE      ]>
@@ -487,6 +583,7 @@ operators =
     <[ nonassoc CREMENT      ]>
     <[ nonassoc ...          ]>
     <[ left     BACKTICK     ]>
+    <[ left     PIPE         ]>
 
 # Wrapping Up
 # -----------
